@@ -432,7 +432,7 @@ func testNode(seed int64) *enode.Node {
 type mapResolver map[string]string
 
 func newMapResolver(maps ...map[string]string) mapResolver {
-	mr := make(mapResolver)
+	mr := make(mapResolver, len(maps))
 	for _, m := range maps {
 		mr.add(m)
 	}
