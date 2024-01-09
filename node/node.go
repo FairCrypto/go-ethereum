@@ -25,6 +25,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -209,6 +210,7 @@ func (n *Node) Close() error {
 		return n.doClose(nil)
 	case runningState:
 		// The node was started, release resources acquired by Start().
+		time.Sleep(time.Second)
 		var errs []error
 		if err := n.stopServices(n.lifecycles); err != nil {
 			errs = append(errs, err)
