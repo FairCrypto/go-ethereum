@@ -196,7 +196,7 @@ type Config struct {
 	AllowUnprotectedTxs bool `toml:",omitempty"`
 
 	// Run with the official testnet genesis
-	//Testnet bool `toml:",omitempty"`
+	Testnet bool `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into
