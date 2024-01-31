@@ -19,6 +19,7 @@ package snap
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -131,8 +132,12 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 func handle(backend Backend, peer *Peer) error {
 	for {
 		if err := handleMessage(backend, peer); err != nil {
-			peer.Log().Debug("Message handling failed in `snap`", "err", err)
-			return err
+			if err == io.EOF {
+				peer.Log().Trace("Message handling failed in `snap`", "err", err)
+				return err
+			} else {
+				peer.Log().Debug("Message handling failed in `snap`", "err", err)
+			}
 		}
 	}
 }
