@@ -548,7 +548,7 @@ func (t *UDPv4) readLoop(unhandled chan<- ReadPacket) {
 func (t *UDPv4) handlePacket(from *net.UDPAddr, buf []byte) error {
 	rawpacket, fromKey, hash, err := v4wire.Decode(buf)
 	if err != nil {
-		t.log.Debug("Bad discv4 packet", "addr", from, "err", err)
+		t.log.Trace("Bad discv4 packet", "addr", from, "err", err)
 		return err
 	}
 	packet := t.wrapPacket(rawpacket)
