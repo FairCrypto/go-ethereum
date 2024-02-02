@@ -27,7 +27,7 @@ import (
 
 // Constants to match up protocol versions and messages
 const (
-	snap1 = 1
+	snap1 = 2
 )
 
 // ProtocolName is the official short name of the `snap` protocol used during
