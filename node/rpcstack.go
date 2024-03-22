@@ -34,6 +34,8 @@ import (
 	"github.com/rs/cors"
 )
 
+const HealthCheckData = `{"jsonrpc":"2.0","method":"eth_health","params":[%s, %s, %s],"id":1}`
+
 // httpConfig is the JSON-RPC/HTTP configuration.
 type httpConfig struct {
 	Modules            []string
@@ -180,7 +182,28 @@ func (h *httpServer) start() error {
 	return nil
 }
 
+func getQueryParam(r *http.Request, param string) string {
+	value := r.URL.Query().Get(param)
+	if value == "" {
+		return "0"
+	}
+	return value
+}
+
 func (h *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/health" {
+		blocktime := getQueryParam(r, "blocktime")
+		peercount := getQueryParam(r, "peercount")
+		uptime := getQueryParam(r, "uptime")
+		data := fmt.Sprintf(HealthCheckData, blocktime, uptime, peercount)
+
+		r.URL.Path = "/"
+		r.Method = http.MethodPost
+		r.Body = io.NopCloser(strings.NewReader(data))
+		r.ContentLength = int64(len(data))
+		r.Header.Set("Content-Type", "application/json")
+	}
+
 	// check if ws request and serve if ws enabled
 	ws := h.wsHandler.Load().(*rpcHandler)
 	if ws != nil && isWebsocket(r) {
