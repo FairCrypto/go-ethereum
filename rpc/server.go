@@ -19,6 +19,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"net/http"
 	"sync/atomic"
 
 	mapset "github.com/deckarep/golang-set"
@@ -91,7 +92,7 @@ func (s *Server) ServeCodec(codec ServerCodec, options CodecOption) {
 // serveSingleRequest reads and processes a single RPC request from the given codec. This
 // is used to serve HTTP connections. Subscriptions and reverse calls are not allowed in
 // this mode.
-func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
+func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec, w http.ResponseWriter) {
 	// Don't serve if server is stopped.
 	if atomic.LoadInt32(&s.run) == 0 {
 		return
@@ -111,7 +112,7 @@ func (s *Server) serveSingleRequest(ctx context.Context, codec ServerCodec) {
 	if batch {
 		h.handleBatch(reqs)
 	} else {
-		h.handleMsg(reqs[0])
+		h.handleMsg(reqs[0], w)
 	}
 }
 

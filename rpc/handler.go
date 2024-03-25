@@ -19,6 +19,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -43,21 +44,20 @@ func SetExecutionTimeLimit(limit time.Duration) {
 //
 // The entry points for incoming messages are:
 //
-//    h.handleMsg(message)
-//    h.handleBatch(message)
+//	h.handleMsg(message)
+//	h.handleBatch(message)
 //
 // Outgoing calls use the requestOp struct. Register the request before sending it
 // on the connection:
 //
-//    op := &requestOp{ids: ...}
-//    h.addRequestOp(op)
+//	op := &requestOp{ids: ...}
+//	h.addRequestOp(op)
 //
 // Now send the request, then wait for the reply to be delivered through handleMsg:
 //
-//    if err := op.wait(...); err != nil {
-//        h.removeRequestOp(op) // timeout, etc.
-//    }
-//
+//	if err := op.wait(...); err != nil {
+//	    h.removeRequestOp(op) // timeout, etc.
+//	}
 type handler struct {
 	reg            *serviceRegistry
 	unsubscribeCb  *callback
@@ -125,7 +125,7 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 	h.startCallProc(func(cp *callProc) {
 		answers := make([]*jsonrpcMessage, 0, len(msgs))
 		for _, msg := range calls {
-			if answer := h.handleCallMsg(cp, msg); answer != nil {
+			if answer := h.handleCallMsg(cp, msg, nil); answer != nil {
 				answers = append(answers, answer)
 			}
 		}
@@ -140,12 +140,12 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 }
 
 // handleMsg handles a single message.
-func (h *handler) handleMsg(msg *jsonrpcMessage) {
+func (h *handler) handleMsg(msg *jsonrpcMessage, w http.ResponseWriter) {
 	if ok := h.handleImmediate(msg); ok {
 		return
 	}
 	h.startCallProc(func(cp *callProc) {
-		answer := h.handleCallMsg(cp, msg)
+		answer := h.handleCallMsg(cp, msg, w)
 		h.addSubscriptions(cp.notifiers)
 		if answer != nil {
 			h.conn.writeJSON(cp.ctx, answer)
@@ -299,7 +299,7 @@ func (h *handler) handleResponse(msg *jsonrpcMessage) {
 }
 
 // handleCallMsg executes a call message and returns the answer.
-func (h *handler) handleCallMsg(ctx *callProc, msg *jsonrpcMessage) *jsonrpcMessage {
+func (h *handler) handleCallMsg(ctx *callProc, msg *jsonrpcMessage, w http.ResponseWriter) *jsonrpcMessage {
 	start := time.Now()
 	switch {
 	case msg.isNotification():
@@ -319,6 +319,12 @@ func (h *handler) handleCallMsg(ctx *callProc, msg *jsonrpcMessage) *jsonrpcMess
 		} else {
 			h.log.Debug("Served "+msg.Method, ctx...)
 		}
+
+		// return 503 if eth_health is called and the node is not healthy
+		if w != nil && msg.Method == "eth_health" && resp.Error != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}
+
 		return resp
 	case msg.hasValidID():
 		return msg.errorResponse(&invalidRequestError{"invalid request"})
