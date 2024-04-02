@@ -234,7 +234,7 @@ func (h *handler) handleBatch(msgs []*jsonrpcMessage) {
 			if msg == nil {
 				break
 			}
-			resp := h.handleCallMsg(cp, msg)
+			resp := h.handleCallMsg(cp, msg, nil)
 			callBuffer.pushResponse(resp)
 			if resp != nil && h.batchResponseMaxSize != 0 {
 				responseBytes += len(resp.Result)
@@ -272,16 +272,16 @@ func (h *handler) respondWithBatchTooLarge(cp *callProc, batch []*jsonrpcMessage
 }
 
 // handleMsg handles a single non-batch message.
-func (h *handler) handleMsg(msg *jsonrpcMessage) {
+func (h *handler) handleMsg(msg *jsonrpcMessage, w http.ResponseWriter) {
 	msgs := []*jsonrpcMessage{msg}
 	h.handleResponses(msgs, func(msg *jsonrpcMessage) {
 		h.startCallProc(func(cp *callProc) {
-			h.handleNonBatchCall(cp, msg)
+			h.handleNonBatchCall(cp, msg, w)
 		})
 	})
 }
 
-func (h *handler) handleNonBatchCall(cp *callProc, msg *jsonrpcMessage) {
+func (h *handler) handleNonBatchCall(cp *callProc, msg *jsonrpcMessage, w http.ResponseWriter) {
 	var (
 		responded sync.Once
 		timer     *time.Timer
@@ -303,7 +303,7 @@ func (h *handler) handleNonBatchCall(cp *callProc, msg *jsonrpcMessage) {
 		})
 	}
 
-	answer := h.handleCallMsg(cp, msg)
+	answer := h.handleCallMsg(cp, msg, w)
 	if timer != nil {
 		timer.Stop()
 	}

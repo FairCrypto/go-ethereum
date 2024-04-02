@@ -327,7 +327,6 @@ func (db *Database) meter(refresh time.Duration, namespace string) {
 		var (
 			delayN   = int64(stats.WriteDelayCount)
 			duration = stats.WriteDelayDuration
-			paused   = stats.WritePaused
 		)
 		if db.writeDelayNMeter != nil {
 			db.writeDelayNMeter.Mark(delayN - delaystats[0])

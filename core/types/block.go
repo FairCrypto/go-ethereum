@@ -111,19 +111,8 @@ type headerMarshaling struct {
 
 // Hash returns the block hash of the header, which is simply the keccak256 hash of its
 // RLP encoding.
-// Also hash of the header could be overridden with external value.
 func (h *Header) Hash() common.Hash {
-	external := h.externalHash.Load()
-	if external != nil {
-		return external.(common.Hash)
-	}
-
 	return rlpHash(h)
-}
-
-// SetExternalHash overrides hash with external value.
-func (h *Header) SetExternalHash(hash common.Hash) {
-	h.externalHash.Store(hash)
 }
 
 var headerSize = common.StorageSize(reflect.TypeOf(Header{}).Size())

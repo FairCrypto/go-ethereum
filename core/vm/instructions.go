@@ -823,14 +823,6 @@ func opSelfdestruct(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext
 	beneficiary := scope.Stack.pop()
 	balance := interpreter.evm.StateDB.GetBalance(scope.Contract.Address())
 	interpreter.evm.StateDB.AddBalance(beneficiary.Bytes20(), balance)
-<<<<<<< HEAD
-	interpreter.evm.StateDB.Suicide(scope.Contract.Address())
-	if interpreter.cfg.Debug {
-		interpreter.cfg.Tracer.CaptureEnter(SELFDESTRUCT, scope.Contract.Address(), beneficiary.Bytes20(), []byte{}, 0, balance)
-		interpreter.cfg.Tracer.CaptureExit([]byte{}, 0, nil)
-	}
-	return nil, nil
-=======
 	interpreter.evm.StateDB.SelfDestruct(scope.Contract.Address())
 	if tracer := interpreter.evm.Config.Tracer; tracer != nil {
 		tracer.CaptureEnter(SELFDESTRUCT, scope.Contract.Address(), beneficiary.Bytes20(), []byte{}, 0, balance)
@@ -853,7 +845,6 @@ func opSelfdestruct6780(pc *uint64, interpreter *EVMInterpreter, scope *ScopeCon
 		tracer.CaptureExit([]byte{}, 0, nil)
 	}
 	return nil, errStopToken
->>>>>>> geth_v1.13.10
 }
 
 // following functions are used by the instruction jump  table

@@ -155,8 +155,6 @@ func newUDPv5(conn UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv5, error) {
 		localNode:    ln,
 		db:           ln.Database(),
 		netrestrict:  cfg.NetRestrict,
-		iprestrict:   cfg.IPRestrict,
-		privateNodes: cfg.PrivateNodes,
 		priv:         cfg.PrivateKey,
 		log:          cfg.Log,
 		validSchemes: cfg.ValidSchemes,
@@ -870,14 +868,14 @@ func (t *UDPv5) collectTableNodes(rip net.IP, distances []uint, limit int) []*en
 		for _, n := range t.tab.appendLiveNodes(dist, bn[:0]) {
 			// Apply some pre-checks to avoid sending invalid nodes.
 
-            // Don't advertise the private nodes
-            if len(t.privateNodes) > 0 && containsEnode(t.privateNodes, n) {
-                continue
-            }
-            // Don't advertise the bots
-            if discfilter.Banned(n.ID(), n.Record()) {
-                continue
-            }
+			// Don't advertise the private nodes
+			if len(t.privateNodes) > 0 && containsEnode(t.privateNodes, n) {
+				continue
+			}
+			// Don't advertise the bots
+			if discfilter.Banned(n.ID(), n.Record()) {
+				continue
+			}
 
 			// Note liveness is checked by appendLiveNodes.
 			if netutil.CheckRelayIP(rip, n.IP()) != nil {

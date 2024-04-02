@@ -136,8 +136,6 @@ func ListenV4(c UDPConn, ln *enode.LocalNode, cfg Config) (*UDPv4, error) {
 		conn:            newMeteredConn(c),
 		priv:            cfg.PrivateKey,
 		netrestrict:     cfg.NetRestrict,
-		iprestrict:      cfg.IPRestrict,
-		privateNodes:    cfg.PrivateNodes,
 		localNode:       ln,
 		db:              ln.Database(),
 		gotreply:        make(chan reply),

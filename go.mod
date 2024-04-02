@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.30.2
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0
+	github.com/cakturk/go-netstat v0.0.0-20200220111822-e5b49efee7a5
 	github.com/cespare/cp v0.1.0
 	github.com/cloudflare/cloudflare-go v0.79.0
 	github.com/cockroachdb/pebble v0.0.0-20230928194634-aa077af62593
@@ -36,6 +37,7 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/graph-gophers/graphql-go v1.3.0
 	github.com/hashicorp/go-bexpr v0.1.10
+	github.com/hashicorp/golang-lru v0.5.1
 	github.com/holiman/billy v0.0.0-20230718173358-1c7e68d277a7
 	github.com/holiman/bloomfilter/v2 v2.0.3
 	github.com/holiman/uint256 v1.2.4
@@ -70,6 +72,7 @@ require (
 	golang.org/x/time v0.3.0
 	golang.org/x/tools v0.15.0
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0
+	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

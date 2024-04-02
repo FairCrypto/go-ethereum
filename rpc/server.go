@@ -19,6 +19,7 @@ package rpc
 import (
 	"context"
 	"io"
+	"net/http"
 	"sync"
 	"sync/atomic"
 
@@ -168,11 +169,6 @@ func (s *Server) Stop() {
 			codec.close()
 		}
 	}
-	log.Debug("RPC server shutting down")
-	s.codecs.Each(func(c interface{}) bool {
-		c.(ServerCodec).close()
-		return true
-	})
 	s.services.callWG.Wait()
 }
 

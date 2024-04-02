@@ -25,24 +25,11 @@ import (
 
 // Config are the configuration options for the Interpreter
 type Config struct {
-<<<<<<< HEAD
-	Debug                   bool   // Enables debugging
-	Tracer                  Tracer // Opcode logger
-	NoRecursion             bool   // Disables call, callcode, delegate call and create
-	NoBaseFee               bool   // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
-	EnablePreimageRecording bool   // Enables recording of SHA3/keccak preimages
-
-	JumpTable [256]*operation // EVM instruction table, automatically populated if unset
-
-	ExtraEips []int // Additional EIPS that are to be enabled
-
-	StatePrecompiles map[common.Address]PrecompiledStateContract
-=======
+	StatePrecompiles        map[common.Address]PrecompiledStateContract
 	Tracer                  EVMLogger // Opcode logger
 	NoBaseFee               bool      // Forces the EIP-1559 baseFee to 0 (needed for 0 price calls)
 	EnablePreimageRecording bool      // Enables recording of SHA3/keccak preimages
 	ExtraEips               []int     // Additional EIPS that are to be enabled
->>>>>>> geth_v1.13.10
 }
 
 // ScopeContext contains the things that are per-call, such as stack and memory,

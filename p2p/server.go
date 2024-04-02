@@ -567,13 +567,11 @@ func (srv *Server) setupDiscovery() error {
 	// Start discovery services.
 	if srv.DiscoveryV4 {
 		cfg := discover.Config{
-			PrivateKey:   srv.PrivateKey,
-			NetRestrict:  srv.NetRestrict,
-			IPRestrict:   srv.IPRestrict,
-			PrivateNodes: srv.PrivateNodes,
-			Bootnodes:    srv.BootstrapNodes,
-			Unhandled:    unhandled,
-			Log:          srv.log,
+			PrivateKey:  srv.PrivateKey,
+			NetRestrict: srv.NetRestrict,
+			Bootnodes:   srv.BootstrapNodes,
+			Unhandled:   unhandled,
+			Log:         srv.log,
 		}
 		ntab, err := discover.ListenV4(conn, srv.localnode, cfg)
 		if err != nil {
@@ -584,12 +582,10 @@ func (srv *Server) setupDiscovery() error {
 	}
 	if srv.DiscoveryV5 {
 		cfg := discover.Config{
-			PrivateKey:   srv.PrivateKey,
-			NetRestrict:  srv.NetRestrict,
-			IPRestrict:   srv.IPRestrict,
-			PrivateNodes: srv.PrivateNodes,
-			Bootnodes:    srv.BootstrapNodesV5,
-			Log:          srv.log,
+			PrivateKey:  srv.PrivateKey,
+			NetRestrict: srv.NetRestrict,
+			Bootnodes:   srv.BootstrapNodesV5,
+			Log:         srv.log,
 		}
 		srv.DiscV5, err = discover.ListenV5(sconn, srv.localnode, cfg)
 		if err != nil {

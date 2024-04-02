@@ -19,18 +19,11 @@ package snap
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-<<<<<<< HEAD
-	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
-	"github.com/ethereum/go-ethereum/light"
-=======
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
->>>>>>> geth_v1.13.10
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -67,21 +60,11 @@ const (
 // exchanges have passed.
 type Handler func(peer *Peer) error
 
-type BlockChain interface {
-	// StateCache returns the caching database underpinning the blockchain instance.
-	StateCache() state.Database
-	// ContractCode retrieves a blob of data associated with a contract hash
-	// either from ephemeral in-memory cache, or from persistent storage.
-	ContractCode(hash common.Hash) ([]byte, error)
-	// Snapshots returns the blockchain snapshot tree.
-	Snapshots() *snapshot.Tree
-}
-
 // Backend defines the data retrieval methods to serve remote requests and the
 // callback methods to invoke on remote deliveries.
 type Backend interface {
 	// Chain retrieves the blockchain object to serve data.
-	Chain() BlockChain
+	Chain() *core.BlockChain
 
 	// RunPeer is invoked when a peer joins on the `eth` protocol. The handler
 	// should do any peer maintenance work, handshakes and validations. If all
@@ -136,19 +119,9 @@ func MakeProtocols(backend Backend, dnsdisc enode.Iterator) []p2p.Protocol {
 // When this function terminates, the peer is disconnected.
 func Handle(backend Backend, peer *Peer) error {
 	for {
-<<<<<<< HEAD
-		if err := handleMessage(backend, peer); err != nil {
-			if err == io.EOF {
-				peer.Log().Trace("Message handling failed in `snap`", "err", err)
-				return err
-			} else {
-				peer.Log().Debug("Message handling failed in `snap`", "err", err)
-			}
-=======
 		if err := HandleMessage(backend, peer); err != nil {
 			peer.Log().Debug("Message handling failed in `snap`", "err", err)
 			return err
->>>>>>> geth_v1.13.10
 		}
 	}
 }
@@ -283,73 +256,7 @@ func HandleMessage(backend Backend, peer *Peer) error {
 		if err != nil {
 			return err
 		}
-<<<<<<< HEAD
-		snap := backend.Chain().Snapshots().Snapshot(req.Root)
-		if snap == nil {
-			// We don't have the requested state snapshotted yet, bail out.
-			// In reality we could still serve using the account and storage
-			// tries only, but let's protect the node a bit while it's doing
-			// snapshot generation.
-			return p2p.Send(peer.rw, TrieNodesMsg, &TrieNodesPacket{ID: req.ID})
-		}
-		// Retrieve trie nodes until the packet size limit is reached
-		var (
-			nodes [][]byte
-			bytes uint64
-			loads int // Trie hash expansions to cound database reads
-		)
-		for _, pathset := range req.Paths {
-			switch len(pathset) {
-			case 0:
-				// Ensure we penalize invalid requests
-				return fmt.Errorf("%w: zero-item pathset requested", errBadRequest)
-
-			case 1:
-				// If we're only retrieving an account trie node, fetch it directly
-				blob, resolved, err := accTrie.TryGetNode(pathset[0])
-				loads += resolved // always account database reads, even for failures
-				if err != nil {
-					break
-				}
-				nodes = append(nodes, blob)
-				bytes += uint64(len(blob))
-
-			default:
-				// Storage slots requested, open the storage trie and retrieve from there
-				account, err := snap.Account(common.BytesToHash(pathset[0]))
-				loads++ // always account database reads, even for failures
-				if err != nil || account == nil {
-					break
-				}
-				stTrie, err := trie.NewSecure(common.BytesToHash(account.Root), triedb)
-				loads++ // always account database reads, even for failures
-				if err != nil {
-					break
-				}
-				for _, path := range pathset[1:] {
-					blob, resolved, err := stTrie.TryGetNode(path)
-					loads += resolved // always account database reads, even for failures
-					if err != nil {
-						break
-					}
-					nodes = append(nodes, blob)
-					bytes += uint64(len(blob))
-
-					// Sanity check limits to avoid DoS on the store trie loads
-					if bytes > req.Bytes || loads > maxTrieNodeLookups || time.Since(start) > maxTrieNodeTimeSpent {
-						break
-					}
-				}
-			}
-			// Abort request processing if we've exceeded our limits
-			if bytes > req.Bytes || loads > maxTrieNodeLookups || time.Since(start) > maxTrieNodeTimeSpent {
-				break
-			}
-		}
-		// Send back anything accumulated
-=======
 		// Send back anything accumulated (or empty in case of errors)
->>>>>>> geth_v1.13.10
 		return p2p.Send(peer.rw, TrieNodesMsg, &TrieNodesPacket{
 			ID:    req.ID,
 			Nodes: nodes,
@@ -665,6 +572,6 @@ func ServiceGetTrieNodesQuery(chain *core.BlockChain, req *GetTrieNodesPacket, s
 type NodeInfo struct{}
 
 // nodeInfo retrieves some `snap` protocol metadata about the running host node.
-func nodeInfo(BlockChain) *NodeInfo {
+func nodeInfo(chain *core.BlockChain) *NodeInfo {
 	return &NodeInfo{}
 }
