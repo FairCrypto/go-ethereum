@@ -14,12 +14,15 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
+//go:build !js
 // +build !js
 
 // Package leveldb implements the key-value database layer based on LevelDB.
 package leveldb
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,18 +62,21 @@ type Database struct {
 	fn string      // filename for reporting
 	db *leveldb.DB // LevelDB instance
 
-	compTimeMeter      metrics.Meter // Meter for measuring the total time spent in database compaction
-	compReadMeter      metrics.Meter // Meter for measuring the data read during compaction
-	compWriteMeter     metrics.Meter // Meter for measuring the data written during compaction
-	writeDelayNMeter   metrics.Meter // Meter for measuring the write delay number due to database compaction
-	writeDelayMeter    metrics.Meter // Meter for measuring the write delay duration due to database compaction
-	diskSizeGauge      metrics.Gauge // Gauge for tracking the size of all the levels in the database
-	diskReadMeter      metrics.Meter // Meter for measuring the effective amount of data read
-	diskWriteMeter     metrics.Meter // Meter for measuring the effective amount of data written
-	memCompGauge       metrics.Gauge // Gauge for tracking the number of memory compaction
-	level0CompGauge    metrics.Gauge // Gauge for tracking the number of table compaction in level0
-	nonlevel0CompGauge metrics.Gauge // Gauge for tracking the number of table compaction in non0 level
-	seekCompGauge      metrics.Gauge // Gauge for tracking the number of table compaction caused by read opt
+	compTimeMeter       metrics.Meter // Meter for measuring the total time spent in database compaction
+	compReadMeter       metrics.Meter // Meter for measuring the data read during compaction
+	compWriteMeter      metrics.Meter // Meter for measuring the data written during compaction
+	writeDelayNMeter    metrics.Meter // Meter for measuring the write delay number due to database compaction
+	writeDelayMeter     metrics.Meter // Meter for measuring the write delay duration due to database compaction
+	diskSizeGauge       metrics.Gauge // Gauge for tracking the size of all the levels in the database
+	diskReadMeter       metrics.Meter // Meter for measuring the effective amount of data read
+	diskWriteMeter      metrics.Meter // Meter for measuring the effective amount of data written
+	memCompGauge        metrics.Gauge // Gauge for tracking the number of memory compaction
+	level0CompGauge     metrics.Gauge // Gauge for tracking the number of table compaction in level0
+	nonlevel0CompGauge  metrics.Gauge // Gauge for tracking the number of table compaction in non0 level
+	seekCompGauge       metrics.Gauge // Gauge for tracking the number of table compaction caused by read opt
+	manualMemAllocGauge metrics.Gauge // Gauge to track the amount of memory that has been manually allocated (not a part of runtime/GC)
+
+	levelsGauge []metrics.Gauge // Gauge for tracking the number of tables in levels
 
 	quitLock sync.Mutex      // Mutex protecting the quit channel access
 	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
@@ -139,9 +145,10 @@ func NewCustom(file string, namespace string, customize func(options *opt.Option
 	ldb.level0CompGauge = metrics.NewRegisteredGauge(namespace+"compact/level0", nil)
 	ldb.nonlevel0CompGauge = metrics.NewRegisteredGauge(namespace+"compact/nonlevel0", nil)
 	ldb.seekCompGauge = metrics.NewRegisteredGauge(namespace+"compact/seek", nil)
+	ldb.manualMemAllocGauge = metrics.NewRegisteredGauge(namespace+"memory/manualalloc", nil)
 
 	// Start up the metrics gathering and return
-	go ldb.meter(metricsGatheringInterval)
+	go ldb.meter(metricsGatheringInterval, namespace)
 	return ldb, nil
 }
 
@@ -209,6 +216,14 @@ func (db *Database) NewBatch() ethdb.Batch {
 	}
 }
 
+// NewBatchWithSize creates a write-only database batch with pre-allocated buffer.
+func (db *Database) NewBatchWithSize(size int) ethdb.Batch {
+	return &batch{
+		db: db.db,
+		b:  leveldb.MakeBatch(size),
+	}
+}
+
 // NewIterator creates a binary-alphabetical iterator over a subset
 // of database content with a particular key prefix, starting at a particular
 // initial key (or after, if it does not exist).
@@ -216,8 +231,26 @@ func (db *Database) NewIterator(prefix []byte, start []byte) ethdb.Iterator {
 	return db.db.NewIterator(bytesPrefixRange(prefix, start), nil)
 }
 
+// NewSnapshot creates a database snapshot based on the current state.
+// The created snapshot will not be affected by all following mutations
+// happened on the database.
+// Note don't forget to release the snapshot once it's used up, otherwise
+// the stale data will never be cleaned up by the underlying compactor.
+func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
+	snap, err := db.db.GetSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	return &snapshot{db: snap}, nil
+}
+
 // Stat returns a particular internal stat of the database.
 func (db *Database) Stat(property string) (string, error) {
+	if property == "" {
+		property = "leveldb.stats"
+	} else if !strings.HasPrefix(property, "leveldb.") {
+		property = "leveldb." + property
+	}
 	return db.db.GetProperty(property)
 }
 
@@ -239,68 +272,63 @@ func (db *Database) Path() string {
 
 // meter periodically retrieves internal leveldb counters and reports them to
 // the metrics subsystem.
-func (db *Database) meter(refresh time.Duration) {
+func (db *Database) meter(refresh time.Duration, namespace string) {
 	// Create the counters to store current and previous compaction values
 	compactions := make([][]int64, 2)
 	for i := 0; i < 2; i++ {
 		compactions[i] = make([]int64, 4)
 	}
-	// Create storage for iostats.
-	var iostats [2]uint64
-
-	// Create storage and warning log tracer for write delay.
-	var (
-		delaystats      [2]int64
-		lastWritePaused time.Time
-	)
-
+	// Create storages for states and warning log tracer.
 	var (
 		errc chan error
 		merr error
-	)
 
+		stats           leveldb.DBStats
+		iostats         [2]int64
+		delaystats      [2]int64
+		lastWritePaused time.Time
+	)
 	timer := time.NewTimer(refresh)
 	defer timer.Stop()
 
 	// Iterate ad infinitum and collect the stats
 	for i := 1; errc == nil && merr == nil; i++ {
 		// Retrieve the database stats
-		var stats = &leveldb.DBStats{}
-		err := db.db.Stats(stats)
+		// Stats method resets buffers inside therefore it's okay to just pass the struct.
+		err := db.db.Stats(&stats)
 		if err != nil {
 			db.log.Error("Failed to read database stats", "err", err)
 			merr = err
 			continue
 		}
+		// Iterate over all the leveldbTable rows, and accumulate the entries
+		for j := 0; j < len(compactions[i%2]); j++ {
+			compactions[i%2][j] = 0
+		}
 		compactions[i%2][0] = stats.LevelSizes.Sum()
+		for _, t := range stats.LevelDurations {
+			compactions[i%2][1] += t.Nanoseconds()
+		}
 		compactions[i%2][2] = stats.LevelRead.Sum()
 		compactions[i%2][3] = stats.LevelWrite.Sum()
-
-		compactions[i%2][1] = 0
-		for _, s := range stats.LevelDurations {
-			compactions[i%2][1] += int64(s.Seconds())
-		}
-
 		// Update all the requested meters
 		if db.diskSizeGauge != nil {
-			db.diskSizeGauge.Update(compactions[i%2][0] * 1024 * 1024)
+			db.diskSizeGauge.Update(compactions[i%2][0])
 		}
 		if db.compTimeMeter != nil {
-			db.compTimeMeter.Mark((compactions[i%2][1] - compactions[(i-1)%2][1]) * 1000 * 1000 * 1000)
+			db.compTimeMeter.Mark(compactions[i%2][1] - compactions[(i-1)%2][1])
 		}
 		if db.compReadMeter != nil {
-			db.compReadMeter.Mark((compactions[i%2][2] - compactions[(i-1)%2][2]) * 1024 * 1024)
+			db.compReadMeter.Mark(compactions[i%2][2] - compactions[(i-1)%2][2])
 		}
 		if db.compWriteMeter != nil {
-			db.compWriteMeter.Mark((compactions[i%2][3] - compactions[(i-1)%2][3]) * 1024 * 1024)
+			db.compWriteMeter.Mark(compactions[i%2][3] - compactions[(i-1)%2][3])
 		}
-		// Retrieve the write delay statistic
 		var (
-			delayN   int64
-			duration time.Duration
+			delayN   = int64(stats.WriteDelayCount)
+			duration = stats.WriteDelayDuration
+			paused   = stats.WritePaused
 		)
-		delayN = int64(stats.WriteDelayCount)
-		duration = stats.WriteDelayDuration
 		if db.writeDelayNMeter != nil {
 			db.writeDelayNMeter.Mark(delayN - delaystats[0])
 		}
@@ -316,14 +344,15 @@ func (db *Database) meter(refresh time.Duration) {
 		}
 		delaystats[0], delaystats[1] = delayN, duration.Nanoseconds()
 
-		// Retrieve the database iostats.
-		nRead := stats.IORead
-		nWrite := stats.IOWrite
+		var (
+			nRead  = int64(stats.IORead)
+			nWrite = int64(stats.IOWrite)
+		)
 		if db.diskReadMeter != nil {
-			db.diskReadMeter.Mark(int64((nRead - iostats[0]) * 1024 * 1024))
+			db.diskReadMeter.Mark(nRead - iostats[0])
 		}
 		if db.diskWriteMeter != nil {
-			db.diskWriteMeter.Mark(int64((nWrite - iostats[1]) * 1024 * 1024))
+			db.diskWriteMeter.Mark(nWrite - iostats[1])
 		}
 		iostats[0], iostats[1] = nRead, nWrite
 
@@ -331,6 +360,14 @@ func (db *Database) meter(refresh time.Duration) {
 		db.level0CompGauge.Update(int64(stats.Level0Comp))
 		db.nonlevel0CompGauge.Update(int64(stats.NonLevel0Comp))
 		db.seekCompGauge.Update(int64(stats.SeekComp))
+
+		for i, tables := range stats.LevelTablesCounts {
+			// Append metrics for additional layers
+			if i >= len(db.levelsGauge) {
+				db.levelsGauge = append(db.levelsGauge, metrics.NewRegisteredGauge(namespace+fmt.Sprintf("tables/level%v", i), nil))
+			}
+			db.levelsGauge[i].Update(int64(tables))
+		}
 
 		// Sleep a bit, then repeat the stats collection
 		select {
@@ -359,7 +396,7 @@ type batch struct {
 // Put inserts the given value into the batch for later committing.
 func (b *batch) Put(key, value []byte) error {
 	b.b.Put(key, value)
-	b.size += len(value)
+	b.size += len(key) + len(value)
 	return nil
 }
 
@@ -422,4 +459,27 @@ func bytesPrefixRange(prefix, start []byte) *util.Range {
 	r := util.BytesPrefix(prefix)
 	r.Start = append(r.Start, start...)
 	return r
+}
+
+// snapshot wraps a leveldb snapshot for implementing the Snapshot interface.
+type snapshot struct {
+	db *leveldb.Snapshot
+}
+
+// Has retrieves if a key is present in the snapshot backing by a key-value
+// data store.
+func (snap *snapshot) Has(key []byte) (bool, error) {
+	return snap.db.Has(key, nil)
+}
+
+// Get retrieves the given key if it's present in the snapshot backing by
+// key-value data store.
+func (snap *snapshot) Get(key []byte) ([]byte, error) {
+	return snap.db.Get(key, nil)
+}
+
+// Release releases associated resources. Release should always succeed and can
+// be called multiple times without causing error.
+func (snap *snapshot) Release() {
+	snap.db.Release()
 }
