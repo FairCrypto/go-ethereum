@@ -81,7 +81,7 @@ type Table struct {
 	closeReq   chan struct{}
 	closed     chan struct{}
 
-    enrFilter NodeFilterFunc
+	enrFilter       NodeFilterFunc
 	nodeAddedHook   func(*bucket, *node)
 	nodeRemovedHook func(*bucket, *node)
 }
@@ -104,7 +104,7 @@ type bucket struct {
 	index        int
 }
 
-func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger, filter NodeFilterFunc) (*Table, error) {
+func newTable(t transport, db *enode.DB, cfg Config) (*Table, error) {
 	tab := &Table{
 		net:        t,
 		db:         db,
@@ -114,10 +114,10 @@ func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger
 		closed:     make(chan struct{}),
 		rand:       mrand.New(mrand.NewSource(0)),
 		ips:        netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
-		log:        log,
-		enrFilter:  filter,
+		log:        cfg.Log,
+		enrFilter:  cfg.FilterFunction,
 	}
-	if err := tab.setFallbackNodes(bootnodes); err != nil {
+	if err := tab.setFallbackNodes(cfg.Bootnodes); err != nil {
 		return nil, err
 	}
 	for i := range tab.buckets {
