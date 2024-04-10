@@ -74,4 +74,5 @@ require (
 	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gotest.tools v2.2.0+incompatible // indirect
+	github.com/panjf2000/ants/v2 v2.4.5
 )

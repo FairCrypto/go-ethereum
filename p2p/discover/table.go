@@ -26,6 +26,7 @@ import (
 	crand "crypto/rand"
 	"encoding/binary"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common/gopool"
 	mrand "math/rand"
 	"net"
 	"sort"
@@ -79,6 +80,8 @@ type Table struct {
 	closeReq   chan struct{}
 	closed     chan struct{}
 
+	enrFilter NodeFilterFunc
+
 	nodeAddedHook func(*node) // for testing
 }
 
@@ -99,7 +102,7 @@ type bucket struct {
 	ips          netutil.DistinctNetSet
 }
 
-func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger) (*Table, error) {
+func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger, filter NodeFilterFunc) (*Table, error) {
 	tab := &Table{
 		net:        t,
 		db:         db,
@@ -110,6 +113,7 @@ func newTable(t transport, db *enode.DB, bootnodes []*enode.Node, log log.Logger
 		rand:       mrand.New(mrand.NewSource(0)),
 		ips:        netutil.DistinctNetSet{Subnet: tableSubnet, Limit: tableIPLimit},
 		log:        log,
+		enrFilter:  filter,
 	}
 	if err := tab.setFallbackNodes(bootnodes); err != nil {
 		return nil, err
@@ -331,6 +335,12 @@ func (tab *Table) doRevalidate(done chan<- struct{}) {
 		if err != nil {
 			tab.log.Debug("ENR request failed", "id", last.ID(), "addr", last.addr(), "err", err)
 		} else {
+			if tab.enrFilter != nil {
+				if !tab.enrFilter(n.Record()) {
+					tab.log.Trace("ENR record filter out", "id", last.ID(), "addr", last.addr())
+					err = fmt.Errorf("filtered node")
+				}
+			}
 			last = &node{Node: *n, addedAt: last.addedAt, livenessChecks: last.livenessChecks}
 		}
 	}
@@ -455,13 +465,24 @@ func (tab *Table) bucketAtDistance(d int) *bucket {
 	return tab.buckets[d-bucketMinDistance-1]
 }
 
-// addSeenNode adds a node which may or may not be live to the end of a bucket. If the
+// The caller must not hold tab.mutex.
+func (tab *Table) addSeenNode(n *node) {
+	gopool.Submit(func() {
+		tab.addSeenNodeSync(n)
+	})
+}
+
+// addSeenNodeSync adds a node which may or may not be live to the end of a bucket. If the
 // bucket has space available, adding the node succeeds immediately. Otherwise, the node is
 // added to the replacements list.
 //
 // The caller must not hold tab.mutex.
-func (tab *Table) addSeenNode(n *node) {
+func (tab *Table) addSeenNodeSync(n *node) {
 	if n.ID() == tab.self().ID() {
+		return
+	}
+
+	if tab.filterNode(n) {
 		return
 	}
 
@@ -490,7 +511,28 @@ func (tab *Table) addSeenNode(n *node) {
 	}
 }
 
-// addVerifiedNode adds a node whose existence has been verified recently to the front of a
+func (tab *Table) filterNode(n *node) bool {
+	if tab.enrFilter == nil {
+		return false
+	}
+	if node, err := tab.net.RequestENR(unwrapNode(n)); err != nil {
+		tab.log.Debug("ENR request failed", "id", n.ID(), "addr", n.addr(), "err", err)
+		return true
+	} else if !tab.enrFilter(node.Record()) {
+		tab.log.Trace("ENR record filter out", "id", n.ID(), "addr", n.addr(), "record", n.Record())
+		return true
+	}
+
+	return false
+}
+
+func (tab *Table) addVerifiedNode(n *node) {
+	gopool.Submit(func() {
+		tab.addVerifiedNodeSync(n)
+	})
+}
+
+// addVerifiedNodeSync adds a node whose existence has been verified recently to the front of a
 // bucket. If the node is already in the bucket, it is moved to the front. If the bucket
 // has no space, the node is added to the replacements list.
 //
@@ -499,11 +541,15 @@ func (tab *Table) addSeenNode(n *node) {
 // ping repeatedly.
 //
 // The caller must not hold tab.mutex.
-func (tab *Table) addVerifiedNode(n *node) {
+func (tab *Table) addVerifiedNodeSync(n *node) {
 	if !tab.isInitDone() {
 		return
 	}
 	if n.ID() == tab.self().ID() {
+		return
+	}
+
+	if tab.filterNode(n) {
 		return
 	}
 
