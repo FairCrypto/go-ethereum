@@ -213,6 +213,8 @@ type Server struct {
 
 	// State of run loop and listenLoop.
 	inboundHistory expHeap
+
+	EnrEntry string
 }
 
 type peerOpFunc func(map[enode.ID]*Peer)
@@ -606,7 +608,7 @@ func (srv *Server) setupDiscovery() error {
 			ForkID forkid.ID
 			Tail   []rlp.RawValue `rlp:"tail"`
 		}
-		if r.Load(enr.WithEntry("opera", &eth)) != nil {
+		if r.Load(enr.WithEntry(srv.EnrEntry, &eth)) != nil {
 			return false
 		}
 
