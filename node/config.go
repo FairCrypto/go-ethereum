@@ -197,9 +197,6 @@ type Config struct {
 
 	// Run with the official testnet genesis
 	Testnet bool `toml:",omitempty"`
-
-	// Run with the official alphanet genesis
-	Alphanet bool `toml:",omitempty"`
 }
 
 // IPCEndpoint resolves an IPC endpoint based on a configured value, taking into
