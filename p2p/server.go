@@ -169,6 +169,8 @@ type Config struct {
 	// Logger is a custom logger to use with the p2p.Server.
 	Logger log.Logger `toml:",omitempty"`
 
+	EnrEntry string
+
 	clock mclock.Clock
 }
 
@@ -213,8 +215,6 @@ type Server struct {
 
 	// State of run loop and listenLoop.
 	inboundHistory expHeap
-
-	EnrEntry string
 }
 
 type peerOpFunc func(map[enode.ID]*Peer)
@@ -608,7 +608,7 @@ func (srv *Server) setupDiscovery() error {
 			ForkID forkid.ID
 			Tail   []rlp.RawValue `rlp:"tail"`
 		}
-		if r.Load(enr.WithEntry(srv.EnrEntry, &eth)) != nil {
+		if r.Load(enr.WithEntry(srv.Config.EnrEntry, &eth)) != nil {
 			return false
 		}
 
